@@ -1,0 +1,60 @@
+name: ttbar_particle_unfolding_smaller
+
+network:
+  hidden_dim: 16
+  dropout: 0.0
+
+  transformer_heads: 1
+  transformer_expansion: 2
+  denoising_expansion: 2
+
+  skip_connection_type: GRU
+
+  num_denoising_layers: 8
+  num_multiplicity_layers: 6
+  num_detector_encoder_layers: 8
+  num_particle_encoder_layers: 8
+  num_particle_decoder_layers: 8
+  num_linear_layers: 0
+
+  ordered_detector_encoder: false
+  ordered_particle_encoder: false
+  ordered_denoising_network: true
+
+  conditional_particle_encoder: false
+  conditional_particle_decoder: false
+
+  normalized_particle_encoder: false
+  deterministic_particle_encoder: false
+
+noise_schedule:
+  noise_schedule: ConditionalNetwork
+  weighting: EDM
+
+  initial_gamma_min: -5.0
+  initial_gamma_max: 5.0
+
+  limit_gamma_min: -12.0
+  limit_gamma_max: 12.0
+
+training:
+  reconstruction_loss_scale: 1.0
+  latent_prior_loss_scale: 1.0
+  diffusion_prior_loss_scale: 1.0
+  norm_prior_loss_scale: 0.0
+  multiplicity_loss_scale: 1.0
+  consistency_loss_scale: 0.00000001
+  
+  seed: 0
+  batch_size: 64
+
+  learning_rate: 0.001
+  learning_rate_minimum: 0.000001
+  learning_rate_decay: 0.95
+
+  gradient_clipping: 1.0
+  unconditional_probability: 0.1
+
+  warmup_steps: 1000
+  cosine_steps: 100000
+  training_steps: 10000000

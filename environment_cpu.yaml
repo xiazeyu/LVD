@@ -1,0 +1,24 @@
+channels:
+  - conda-forge
+  - nodefaults
+
+dependencies:
+  - python=3.11
+  - numba
+  - numpy
+
+  - pip
+  - pip:
+      - tensorflow-cpu
+      - tensorflow-datasets
+      - tensorflow-probability
+
+      - omegaconf
+      - wandb
+      - vector
+      
+      - jax[cpu]
+      - flax
+      - optax
+      - orbax-checkpoint
+      
