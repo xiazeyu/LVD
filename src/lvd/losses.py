@@ -46,12 +46,34 @@ def consistency_loss(
     consistency_loss = jnp.abs(explicit_squared_mass - derived_square_mass)
     return jnp.mean(consistency_loss * batch.particle_weight, where=batch.particle_mask)
 
-def latent_prior_loss(
-        batch: Batch, 
-        encoded_particles: ParticleEncoder.OutputType, 
-        prior_mean: Array,
-        prior_log_var: Array):
-    return 0.0
+def unit_latent_prior_loss(
+    batch: Batch,
+    encoded_particles: ParticleEncoder.OutputType,
+    prior_mean: Array,
+    prior_log_var: Array
+):
+    mean_squared_1 = prior_mean * prior_mean
+    log_var_1 = prior_log_var
+    var_1 = jnp.exp(log_var_1)
+
+    prior_loss = 0.5 * (
+        + mean_squared_1
+        + var_1 
+        - log_var_1 
+        - 1.0
+    ).mean(2)
+
+    padded_weight = jnp.pad(batch.particle_weight, ((0, 0), (1, 0)), mode="constant", constant_values=1.0)
+
+    return jnp.mean(prior_loss * padded_weight, where=encoded_particles.masks)
+
+
+def coupled_latent_prior_loss(
+    batch: Batch, 
+    encoded_particles: ParticleEncoder.OutputType, 
+    prior_mean: Array,
+    prior_log_var: Array
+):
     log_var_x = 2.0 * encoded_particles.log_std
     log_var_y = prior_log_var
     var_y = jnp.exp(log_var_y)
@@ -68,6 +90,14 @@ def latent_prior_loss(
 
     return jnp.mean(prior_loss * padded_weight, where=encoded_particles.masks)
 
+def latent_prior_loss(
+    batch: Batch, 
+    encoded_particles: ParticleEncoder.OutputType, 
+    prior_mean: Array,
+    prior_log_var: Array
+):
+    return unit_latent_prior_loss(batch, encoded_particles, prior_mean, prior_log_var)
+    
 def diffusion_prior_loss(
     batch: Batch, 
     mean: Array,
@@ -109,7 +139,22 @@ def diffusion_loss(
 ):
     loss = eps_weighting * jnp.square(eps_hat - eps_t)
 
-    return loss.mean(2)
+    return loss.mean(-1)
+
+def chamfer_loss(
+    eps_t: Array,
+    eps_hat: Array,
+    eps_weighting: Array,
+    masks: Array
+):
+    pairwise_distance = (eps_hat[:, None, :, :] - eps_t[:, :, None, :])
+    pairwise_distance = jnp.square(pairwise_distance).mean(-1)
+    pairwise_mask = masks[:, :, None] & masks[:, None, :]
+
+    l1 = jnp.min(pairwise_distance, where=pairwise_mask, initial=10, axis=1)
+    l2 = jnp.min(pairwise_distance, where=pairwise_mask, initial=10, axis=2)
+
+    return 0.5 * eps_weighting[..., 0] * (l1 + l2)
 
 def diffusion_loss_mean(
     batch: Batch,
@@ -117,8 +162,12 @@ def diffusion_loss_mean(
     eps_hat: Array,
     eps_weighting: Array,
     masks: Array,
+    ordered_denoising_network: bool
 ):
-    loss = diffusion_loss(eps_t, eps_hat, eps_weighting)
+    if ordered_denoising_network:
+        loss = diffusion_loss(eps_t, eps_hat, eps_weighting)
+    else:
+        loss = chamfer_loss(eps_t, eps_hat, eps_weighting, masks)
     padded_weight = jnp.pad(batch.particle_weight, ((0, 0), (1, 0)), mode="constant", constant_values=1.0)
 
     return jnp.mean(loss * padded_weight, where=masks)
@@ -129,7 +178,12 @@ def diffusion_loss_variance(
     eps_hat: Array,
     eps_weighting: Array,
     masks: Array,
+    ordered_denoising_network: bool
 ):
-    loss = diffusion_loss(eps_t, eps_hat, eps_weighting)
+    if ordered_denoising_network:
+        loss = diffusion_loss(eps_t, eps_hat, eps_weighting)
+    else:
+        loss = chamfer_loss(eps_t, eps_hat, eps_weighting, masks)
+    
     padded_weight = jnp.pad(batch.particle_weight, ((0, 0), (1, 0)), mode="constant", constant_values=1.0)
     return jnp.var(loss * padded_weight, where=masks)

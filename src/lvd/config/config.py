@@ -1,4 +1,6 @@
 
+from typing import List, Union, Optional
+
 from dataclasses import dataclass, field
 from omegaconf import OmegaConf, MISSING
 
@@ -13,7 +15,7 @@ from lvd.config.dataset_config import DatasetConfig
 @dataclass
 class Schema:
     name: str = MISSING
-    base: str = MISSING
+    base: Optional[str] = None
     
     network: NetworkConfig = field(default_factory=NetworkConfig)
     noise_schedule: NoiseScheduleConfig = field(default_factory=NoiseScheduleConfig)
@@ -26,8 +28,8 @@ class Config(Schema):
         schema = OmegaConf.structured(Schema())
         config = OmegaConf.load(filepath)
         if "base" in config:
-            base_config = OmegaConf.load(config["base"])
-            return OmegaConf.merge(schema, base_config, config)
+            base_config = Config.load(config["base"])
+            return OmegaConf.merge(base_config, config)
         else:
             return OmegaConf.merge(schema,  config)
         # return cls(

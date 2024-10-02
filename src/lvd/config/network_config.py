@@ -3,6 +3,7 @@ from enum import Enum
 
 
 class SkipConnectionType(Enum):
+    Identity = "identity"
     GRU = "gru"
     Simple = "simple"
     Output = "output"
@@ -48,3 +49,5 @@ class NetworkConfig:
     deterministic_particle_encoder: bool = False
 
     coupled_diffusion_particle_decoder: bool = False
+
+    discrete_multiplicity_predictor: bool = False

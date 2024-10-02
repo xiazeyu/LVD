@@ -19,6 +19,11 @@ class Simple(SkipLayer):
           return inputs + state
         
 
+class Identity(SkipLayer):
+     @nn.compact
+     def __call__(self, inputs: Array, state: Array, *, training: bool = False) -> Array:
+          return inputs
+
 class OutputGate(SkipLayer):    
     @nn.compact
     def __call__(self, inputs: Array, state: Array, *, training: bool = False) -> Array:
@@ -42,6 +47,8 @@ class GRUSkip(SkipLayer):
 def create_skip_connection(name: str) -> Type[SkipLayer]:
     if name == SkipConnectionType.Simple:
         return Simple
+    elif name == SkipConnectionType.Identity:
+        return Identity
     elif name == SkipConnectionType.Output:
         return OutputGate
     elif name == SkipConnectionType.Highway:

@@ -11,6 +11,7 @@ from diffusers.schedulers import FlaxDPMSolverMultistepScheduler
 
 from lvd.dataset import Batch
 from lvd.utils import masked_fill
+from lvd.networks.particle_decoder import ParticleDecoderOutput
 
 from lvd.networks import (
     DetectorEncoder,
@@ -45,6 +46,9 @@ class LVDOutputs(NamedTuple):
     gamma_0: NoiseSchedule.Statistics
     gamma_1: NoiseSchedule.Statistics
     gamma_t: NoiseSchedule.Statistics
+
+    denormalized_true_particles: ParticleDecoder.OutputType
+    denormalized_decoded_particles: ParticleDecoder.OutputType
 
     explicit_squared_mass: Array
     derived_squared_mass: Array
@@ -98,8 +102,8 @@ class LVD(NormalizedModule):
         B, T = template.shape[:2]
 
         t0 = jax.random.uniform(self.make_rng("timestep"))    
-        timesteps = jnp.linspace(0.0, 1.0, B)
-        timesteps = jnp.mod(t0 + timesteps, 1.0)
+        timesteps = jnp.linspace(0.0, 1.0, B + 1)
+        timesteps = jnp.mod(t0 + timesteps, 1.0)[:B]
         timesteps = jnp.broadcast_to(timesteps[:, None], (B, T))
 
         return timesteps
@@ -120,6 +124,13 @@ class LVD(NormalizedModule):
         return self.normalize_squared_mass(square_mass)
     
     def __call__(self, batch: Batch, *, training: bool = False) -> Any:
+        denormalized_true_particles = ParticleDecoderOutput(
+            vectors=batch.particle_vectors,
+            type_logits=jax.nn.one_hot(batch.particle_types, self.config.dataset.num_particle_types),
+            mask=batch.particle_mask,
+            event=batch.particle_event
+        )
+
         batch = self.normalize_batch(batch)
 
         gamma_limits = self.gamma_limits()
@@ -131,7 +142,7 @@ class LVD(NormalizedModule):
         )
 
         # Mask out some of the detector varaibles to train the network unconditionally.
-        encoded_detector = self.unconditional(encoded_detector)
+        # encoded_detector = self.unconditional(encoded_detector)
 
         # Encode the truth particles into the latent space.
         encoded_particles = self.encode_particles(
@@ -166,14 +177,15 @@ class LVD(NormalizedModule):
             training = training
         )
 
+        denormalized_decoded_particles = self.denormalize_particle(decoded_particle)
+
         # Compute the two version of particle mass if it is relevant
-        if self.config.training.consistency_loss_scale > 0:
-            denormalized_decoded_particles = self.denormalize_particle(decoded_particle)
-            explicit_squared_mass = self.explicit_squared_mass(denormalized_decoded_particles.vectors)
-            derived_squared_mass = self.derived_squared_mass(denormalized_decoded_particles.vectors)
-        else:
-            explicit_squared_mass = jnp.zeros(decoded_particle.mask.shape)
-            derived_squared_mass = jnp.zeros(decoded_particle.mask.shape)
+        # if self.config.training.consistency_loss_scale > 0:
+        #     explicit_squared_mass = self.explicit_squared_mass(denormalized_decoded_particles.vectors)
+        #     derived_squared_mass = self.derived_squared_mass(denormalized_decoded_particles.vectors)
+        # else:
+        explicit_squared_mass = jnp.zeros(decoded_particle.mask.shape)
+        derived_squared_mass = jnp.zeros(decoded_particle.mask.shape)
 
         # Sample a timestep to compute the diffusion loss for.
         timesteps = self.sample_timesteps(encoded_particle_vector)
@@ -228,6 +240,9 @@ class LVD(NormalizedModule):
             self.noise_schedule.statistics(0.0, *gamma_limits),
             self.noise_schedule.statistics(1.0, *gamma_limits),
             self.noise_schedule.statistics(timesteps, *gamma_limits),
+
+            denormalized_true_particles,
+            denormalized_decoded_particles,
 
             explicit_squared_mass,
             derived_squared_mass

@@ -13,6 +13,7 @@ from lvd.utils import create_learning_rate_fn, create_optimizer
 from lvd.config import Config
 from lvd.dataset import Dataset, Batch
 from lvd.models.lvd import LVD
+from lvd.utils import masked_fill
 
 from lvd.trainers.trainer import Trainer
 from diffusers.schedulers import FlaxDPMSolverMultistepScheduler
@@ -28,8 +29,10 @@ from lvd.losses import (
     diffusion_loss_mean,
     diffusion_loss_variance,
     norm_prior_loss,
-    consistency_loss
+    # consistency_loss
 )
+
+from lvd.consistency import ConsistencyType, get_consistency_loss
 
 class LVDState(struct.PyTreeNode):
     normalization: core.FrozenDict[str, Any] = struct.field(pytree_node=True)
@@ -56,6 +59,7 @@ class GenerationOptions(NamedTuple):
 
 def create_trainer(config: Config):
     model = LVD(config)
+    consistency_loss = get_consistency_loss(config)
     
     def initialize(
         key: jax.random.PRNGKey, 
@@ -134,11 +138,10 @@ def create_trainer(config: Config):
                     outputs.decoded_particle
                 ),
 
-                # "consistency": consistency_loss(
-                #     outputs.batch,
-                #     outputs.explicit_squared_mass,
-                #     outputs.derived_squared_mass
-                # ),
+                "consistency": consistency_loss(
+                    outputs.denormalized_true_particles,
+                    outputs.denormalized_decoded_particles
+                ),
                 
                 "latent_prior": latent_prior_loss(
                     outputs.batch, 
@@ -164,7 +167,8 @@ def create_trainer(config: Config):
                     outputs.eps_t, 
                     outputs.eps_hat, 
                     outputs.eps_weighting, 
-                    outputs.encoded_particles.masks
+                    outputs.encoded_particles.masks,
+                    config.network.ordered_denoising_network
                 ),
 
                 "gamma_min": outputs.gamma_0.gamma,
@@ -182,6 +186,7 @@ def create_trainer(config: Config):
                 + config.training.diffusion_prior_loss_scale * metrics["diffusion_prior"]
 
                 + config.training.diffusion_loss_scale * metrics["diffusion_loss"]
+                + config.training.consistency_loss_scale * metrics["consistency"]
             )
 
             return total_loss, metrics
@@ -203,7 +208,8 @@ def create_trainer(config: Config):
                     outputs.eps_t, 
                     outputs.eps_hat, 
                     outputs.eps_weighting, 
-                    outputs.encoded_particles.masks
+                    outputs.encoded_particles.masks,
+                    config.network.ordered_denoising_network
                 )
             }
 
@@ -236,6 +242,33 @@ def create_trainer(config: Config):
 
         return state, metrics
     
+    def reconstruct(
+        state: LVDState,
+        batch: Batch,
+        seed: Optional[jax.random.PRNGKey] = None
+    ):
+        if seed is None:
+            seed = state.seed
+
+        seed, reconstruct_seed = jax.random.split(seed, 2)
+
+        params = {**state.lvd_state.params, **state.gamma_state.params}
+        apply_fn = partial(
+            model.apply, 
+            {"params": params, "normalization": state.normalization},
+        )
+
+        output = apply_fn(
+            batch, 
+            training = False,
+            rngs = model.rngs(reconstruct_seed)
+        )
+
+        return apply_fn(
+            output.decoded_particle,
+            method=model.denormalize_particle
+        ), seed
+    
     @partial(jax.jit, static_argnums=(4, 5))
     def generate(
         state: LVDState,
@@ -246,6 +279,7 @@ def create_trainer(config: Config):
         num_steps: int,
         guidance_scale: float = 0.0,
         betas: Optional[Array] = None,
+        multiplicity: Optional[Array] = None,
         seed: Optional[jax.random.PRNGKey] = None
     ):
         if seed is None:
@@ -271,6 +305,9 @@ def create_trainer(config: Config):
             method=model.sample_latent
         )
 
+        if multiplicity is not None:
+            z_mask = jnp.repeat(jnp.arange(max_particles)[None, :], batch_size, axis=0) < multiplicity[:, None]
+            
         if betas is None:
             schedule = apply_fn(
                 num_training_steps=num_steps,
@@ -327,9 +364,15 @@ def create_trainer(config: Config):
             method=model.alpha_0
         )
 
+        z_0 = z_0 / alpha_0
+        if config.network.normalized_particle_encoder:
+            norms = jnp.sqrt(jnp.mean(jnp.square(z_0), axis=-1, keepdims=True))
+            norms = jnp.where(z_mask[:, :, None], norms, 1.0)
+            z_0 = z_0 / norms
+            
         output = apply_fn(
             encoded_detector,
-            z_0 / alpha_0,
+            z_0,
             z_mask,
             rngs = model.rngs(decode_seed),
             method=model.decode_latent
@@ -432,5 +475,5 @@ def create_trainer(config: Config):
 
         return output, seed
         
-    return Trainer(model, initialize, update, GenerationOptions(generate, generate_ode))
+    return Trainer(model, initialize, update, GenerationOptions(generate, generate_ode), reconstruct)
 

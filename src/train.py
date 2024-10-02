@@ -65,16 +65,16 @@ def create_metrics_table(metrics: Dict[str, Array]):
 #     return jax.tree_util.tree_unflatten(tree_def, flat_state + flat_checkpoint)
 
 
-def filter_checkpoint_keys(state, checkpoint, checkpoint_mask):
+def filter_checkpoint_keys(state, checkpoint, checkpoint_mask, negative_checkpoint_mask):
     def is_in_mask(key):
         key = ''.join(map(str, key))[1:]
 
         for mask in checkpoint_mask:
             if key[:len(mask)] == mask:
-                print("INCLUDE", key)
-                return True
+                print("EXCLUDE" if negative_checkpoint_mask else "INCLUDE", key)
+                return not negative_checkpoint_mask
 
-        return False
+        return negative_checkpoint_mask
             
     flat_state, tree_def = jax.tree_util.tree_flatten_with_path(state)
     flat_checkpoint, _ = jax.tree_util.tree_flatten_with_path(checkpoint)
@@ -130,13 +130,14 @@ def train(
         if config.training.checkpoint_mask is None:
             state = checkpoint_state
         else:
-            state = filter_checkpoint_keys(state, checkpoint_state, config.training.checkpoint_mask)
+            state = filter_checkpoint_keys(state, checkpoint_state, config.training.checkpoint_mask, config.training.negative_checkpoint_mask)
 
     if reset_limits:
         state.lvd_state.params["gamma_limits"]["gamma_max"] = 0.0 * state.lvd_state.params["gamma_limits"]["gamma_max"] + config.noise_schedule.initial_gamma_max
         state.lvd_state.params["gamma_limits"]["gamma_min"] = 0.0 * state.lvd_state.params["gamma_limits"]["gamma_min"] + config.noise_schedule.initial_gamma_min
 
     # Replicate state across all devices and update the random keys.
+    start_step = int(state.step)
     state = flax.jax_utils.replicate(state)
     state = replace(state, seed=jax.pmap(jax.random.fold_in)(state.seed, jnp.arange(jax.device_count())))
     
@@ -159,7 +160,7 @@ def train(
     with Progress() as progress:
         task = progress.add_task("Training", total=config.training.training_steps)
 
-        for step, batch in enumerate(dataloader):
+        for step, batch in enumerate(dataloader, start=start_step):
             state, metrics = trainer.update(state, batch)
             metrics = jax.tree_map(lambda x: x.mean().item(), metrics)
             

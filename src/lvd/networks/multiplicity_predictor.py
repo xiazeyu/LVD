@@ -37,8 +37,16 @@ class MultiplicityPredictor(nn.Module):
         embeddings = Embedding(*self.embedding_config)(embeddings)
         log_alpha, log_beta = jnp.transpose(nn.Dense(2)(embeddings))
 
-        return distributions.Gamma(
-            concentration=jnp.exp(log_alpha / 10.0), 
-            log_rate=log_beta
-        )
+        if self.config.discrete_multiplicity_predictor:
+            return distributions.NegativeBinomial(
+                total_count=jnp.exp(log_alpha),
+                logits=log_beta,
+                validate_args=False,
+                require_integer_total_count=False
+            )
+        else:
+            return distributions.Gamma(
+                concentration=jnp.exp(log_alpha / 10.0), 
+                log_rate=log_beta
+            )
         

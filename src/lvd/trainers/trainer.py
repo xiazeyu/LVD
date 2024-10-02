@@ -20,9 +20,12 @@ GenerateType = Callable[[
     Optional[PRNGKey]
 ], Any]
 
+ReconstructType = Callable[[TrainState, Array, Optional[PRNGKey]], Any]
+
 
 class Trainer(NamedTuple):
     model: Module
     initialize: InitializeType
     update: UpdateType
     generate: GenerateType
+    reconstruct: ReconstructType
