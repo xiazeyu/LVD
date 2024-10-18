@@ -1,7 +1,7 @@
 name: zjets_small_base
 
 network:
-  hidden_dim: 16
+  hidden_dim: 8
   dropout: 0.0
   transformer_heads: 1
   transformer_expansion: 2
@@ -35,7 +35,7 @@ noise_schedule:
 
 training:
   seed: 0
-  batch_size: 64
+  batch_size: 32
 
   learning_rate: 0.001
   learning_rate_minimum: 0.000001

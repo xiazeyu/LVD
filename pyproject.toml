@@ -1,0 +1,44 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "lvd"
+version = "2024.10.17"
+description = "Latent Variation Diffusion for Unfolding"
+
+dependencies = [
+  "numpy",
+  "numba",
+
+  "jax",
+  "optax",
+  "diffrax",
+  "flax",
+
+  "tensorflow",
+  "tensorflow-probability",
+  "tensorflow-datasets",
+
+  "diffusers"
+
+]
+requires-python = ">=3.8"
+authors = [
+  {name = "Alexander Shmakov", email = "ashmakov@uci.edu"},
+]
+maintainers = [
+  {name = "Alexander Shmakov", email = "ashmakov@uci.edu"},
+]
+
+readme = "README.md"
+license = {file = "LICENSE"}
+keywords = ["diffusion", "lvd", "unfolding"]
+classifiers = [
+  "Development Status :: 5 - Production/Stable",
+  "Programming Language :: Python"
+]
+
+[project.urls]
+Homepage = "https://github.com/Alexanders101/lvd"
+Repository = "https://github.com/Alexanders101/lvd"
