@@ -19,6 +19,7 @@ dependencies = [
   "tensorflow",
   "tensorflow-probability",
   "tensorflow-datasets",
+  "tf_keras",
 
   "diffusers"
 

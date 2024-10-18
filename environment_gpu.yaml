@@ -16,13 +16,15 @@ dependencies:
       - tensorflow
       - tensorflow-datasets
       - tensorflow-probability
+      - tf_keras
       - vector
 
       - omegaconf
       - wandb
-
-      # - jax[cuda12_pip] -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
-      # - flax
-      # - optax
-      # - orbax-checkpoint
+      - diffusers
       
+      - jax[cuda12]
+      - flax
+      - optax
+      - diffrax
+      - orbax-checkpoint
