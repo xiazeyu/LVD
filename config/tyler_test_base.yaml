@@ -1,0 +1,49 @@
+name: tyler_test_base
+
+network:
+  hidden_dim: 2
+  dropout: 0.0
+  transformer_heads: 1
+  transformer_expansion: 2
+  skip_connection_type: GRU
+  denoising_expansion: 3
+
+  num_denoising_layers: 2
+  num_multiplicity_layers: 0
+  num_detector_encoder_layers: 2
+  num_particle_encoder_layers: 2
+  num_particle_decoder_layers: 2
+  num_linear_layers: 0
+
+  ordered_detector_encoder: false
+  ordered_particle_encoder: false
+  ordered_denoising_network: true
+
+  conditional_particle_encoder: false
+  conditional_particle_decoder: false
+
+  normalized_particle_encoder: false
+  deterministic_particle_encoder: true
+  coupled_diffusion_particle_decoder: true
+
+noise_schedule:
+  noise_schedule: Network
+  weighting: EDM
+
+  initial_gamma_min: -1.0
+  initial_gamma_max: 1.0
+
+training:
+  seed: 0
+  batch_size: 32
+
+  learning_rate: 0.01
+  learning_rate_minimum: 0.000001
+  learning_rate_decay: 0.95
+
+  gradient_clipping: 1.0
+  unconditional_probability: 0.0
+
+  warmup_steps: 100
+  cosine_steps: 1000
+  training_steps: 10000
